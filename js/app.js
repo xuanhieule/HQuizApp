@@ -18,6 +18,7 @@ class QuizApp {
         this.submitBtn = document.getElementById('submit-btn');
         this.sidebar = document.querySelector('.sidebar');
         this.menuToggle = document.getElementById('menu-toggle');
+        this.themeToggle = document.getElementById('theme-toggle');
 
         this.init();
     }
@@ -33,6 +34,8 @@ class QuizApp {
                 this.setMobileMenu(!this.sidebar.classList.contains('menu-open'));
             });
         }
+
+        this.initTheme();
         
         const btnOpenFolder = document.getElementById('btn-open-folder');
         const folderInput = document.getElementById('folder-input');
@@ -51,6 +54,33 @@ class QuizApp {
         this.resetBtn.addEventListener('click', () => this.resetQuiz());
 
         await this.restoreStateOnLoad();
+    }
+
+    initTheme() {
+        const savedTheme = localStorage.getItem('QUIZ_THEME');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        this.setTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
+
+        if (this.themeToggle) {
+            this.themeToggle.addEventListener('click', () => {
+                const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+                this.setTheme(nextTheme);
+            });
+        }
+    }
+
+    setTheme(theme) {
+        const isDark = theme === 'dark';
+        document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+        localStorage.setItem('QUIZ_THEME', isDark ? 'dark' : 'light');
+
+        if (this.themeToggle) {
+            this.themeToggle.setAttribute('aria-pressed', String(isDark));
+            this.themeToggle.setAttribute('aria-label', isDark ? 'Tắt chế độ tối' : 'Bật chế độ tối');
+            this.themeToggle.setAttribute('title', isDark ? 'Tắt chế độ tối' : 'Bật chế độ tối');
+            this.themeToggle.querySelector('.theme-icon').textContent = isDark ? '\u2600' : '\u263e';
+            this.themeToggle.querySelector('.theme-toggle-label').textContent = isDark ? 'Chế độ sáng' : 'Chế độ tối';
+        }
     }
 
     setMobileMenu(isOpen) {
