@@ -12,6 +12,7 @@ class QuestionRendererFactory {
 class BaseQuestion {
     render(q, index, imageResolver) {}
     evaluate(q, formData) {}
+    applyAnswerFeedback(q, formData) {}
     isAnswered(q, formData) {
         return formData.getAll(`q_${q.id}`).length > 0;
     }
@@ -38,6 +39,20 @@ class SingleChoiceQuestion extends BaseQuestion {
         const isCorrect = selected && selected.trim().toLowerCase() === q.correct_answers.trim().toLowerCase();
         return { isCorrect, userAnswers: selected || 'Chưa chọn', correctAnswers: q.correct_answers, explanation: q.explanation };
     }
+    applyAnswerFeedback(q, formData) {
+        const selected = formData.get(`q_${q.id}`);
+        const correctAnswer = q.correct_answers.trim().toLowerCase();
+        this.getInputs(q.id).forEach(input => {
+            const label = input.closest('label');
+            const isCorrectAnswer = input.value.trim().toLowerCase() === correctAnswer;
+            const isSelectedWrong = input.checked && input.value.trim().toLowerCase() !== correctAnswer;
+            label.classList.toggle('answer-correct', !isSelectedWrong && isCorrectAnswer);
+            label.classList.toggle('answer-incorrect', isSelectedWrong);
+        });
+    }
+    getInputs(questionId) {
+        return Array.from(document.querySelectorAll(`input[name="q_${questionId}"]`));
+    }
 }
 
 class MultipleChoiceQuestion extends BaseQuestion {
@@ -53,6 +68,20 @@ class MultipleChoiceQuestion extends BaseQuestion {
         const expected = q.correct_answers.split('|').map(s => s.trim().toLowerCase()).sort();
         const isCorrect = selected.length === expected.length && selected.every((val, idx) => val === expected[idx]);
         return { isCorrect, userAnswers: selected.join(', ') || 'Chưa chọn', correctAnswers: q.correct_answers.split('|').join(', '), explanation: q.explanation };
+    }
+    applyAnswerFeedback(q, formData) {
+        const expected = new Set(q.correct_answers.split('|').map(answer => answer.trim().toLowerCase()));
+        this.getInputs(q.id).forEach(input => {
+            const answer = input.value.trim().toLowerCase();
+            const isCorrectAnswer = expected.has(answer);
+            const isSelectedWrong = input.checked && !isCorrectAnswer;
+            const label = input.closest('label');
+            label.classList.toggle('answer-correct', !isSelectedWrong && isCorrectAnswer);
+            label.classList.toggle('answer-incorrect', isSelectedWrong);
+        });
+    }
+    getInputs(questionId) {
+        return Array.from(document.querySelectorAll(`input[name="q_${questionId}"]`));
     }
 }
 
@@ -90,6 +119,24 @@ class MatrixQuestion extends BaseQuestion {
             if (!selectedCol || selectedCol.trim().toLowerCase() !== expectedCol) isAllCorrect = false;
         });
         return { isCorrect: isAllCorrect, userAnswers: 'Theo ma trận', correctAnswers: q.correct_answers, explanation: q.explanation };
+    }
+    applyAnswerFeedback(q, formData) {
+        const { rows } = this.parseOptions(q.options);
+        const expectedMap = {};
+        q.correct_answers.split('|').forEach(pair => {
+            const [row, col] = pair.split(':').map(p => p.trim().toLowerCase());
+            if (row && col) expectedMap[row] = col;
+        });
+
+        rows.forEach((rowText, rowIndex) => {
+            const selected = formData.get(`q_${q.id}_row_${rowIndex}`);
+            if (!selected) return;
+
+            const isCorrect = selected.trim().toLowerCase() === expectedMap[rowText.trim().toLowerCase()];
+            const input = Array.from(document.querySelectorAll(`input[name="q_${q.id}_row_${rowIndex}"]`))
+                .find(option => option.value === selected);
+            if (input) input.closest('td').classList.add(isCorrect ? 'answer-correct' : 'answer-incorrect');
+        });
     }
     isAnswered(q, formData) {
         const { rows } = this.parseOptions(q.options);

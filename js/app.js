@@ -275,6 +275,7 @@ class QuizApp {
         this.questions.forEach(q => {
             const renderer = QuestionRendererFactory.getRenderer(q.type);
             const result = renderer.evaluate(q, formData);
+            renderer.applyAnswerFeedback(q, formData);
             const feedbackEl = document.getElementById(`feedback-${q.id}`);
 
             if (result.isCorrect) {
@@ -297,6 +298,9 @@ class QuizApp {
 
     resetQuiz() {
         this.quizForm.reset();
+        this.quizForm.querySelectorAll('.answer-correct, .answer-incorrect').forEach(el => {
+            el.classList.remove('answer-correct', 'answer-incorrect');
+        });
         document.querySelectorAll('.feedback').forEach(el => {
             el.className = 'feedback';
             el.innerHTML = '';
