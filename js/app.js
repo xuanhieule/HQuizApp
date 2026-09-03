@@ -18,6 +18,7 @@ class QuizApp {
         this.submitBtn = document.getElementById('submit-btn');
         this.sidebar = document.querySelector('.sidebar');
         this.menuToggle = document.getElementById('menu-toggle');
+        this.themeToggle = document.getElementById('theme-toggle');
 
         this.init();
     }
@@ -32,6 +33,11 @@ class QuizApp {
             this.menuToggle.addEventListener('click', () => {
                 this.setMobileMenu(!this.sidebar.classList.contains('menu-open'));
             });
+        }
+
+        if (this.themeToggle) {
+            this.updateThemeToggle();
+            this.themeToggle.addEventListener('click', () => this.toggleTheme());
         }
         
         const btnOpenFolder = document.getElementById('btn-open-folder');
@@ -58,6 +64,20 @@ class QuizApp {
         this.sidebar.classList.toggle('menu-open', isOpen);
         this.menuToggle.setAttribute('aria-expanded', String(isOpen));
         this.menuToggle.setAttribute('aria-label', isOpen ? 'Đóng menu bài thi' : 'Mở menu bài thi');
+    }
+
+    toggleTheme() {
+        const isDark = document.documentElement.dataset.theme === 'dark';
+        document.documentElement.dataset.theme = isDark ? 'light' : 'dark';
+        localStorage.setItem('QUIZ_THEME', isDark ? 'light' : 'dark');
+        this.updateThemeToggle();
+    }
+
+    updateThemeToggle() {
+        const isDark = document.documentElement.dataset.theme === 'dark';
+        this.themeToggle.setAttribute('aria-pressed', String(isDark));
+        this.themeToggle.setAttribute('aria-label', isDark ? 'Tắt chế độ tối' : 'Bật chế độ tối');
+        this.themeToggle.setAttribute('title', isDark ? 'Tắt chế độ tối' : 'Bật chế độ tối');
     }
 
     handleLocalFolder(event) {
