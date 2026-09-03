@@ -2,8 +2,6 @@ class QuizApp {
     constructor() {
         this.questions = [];
         this.treeManager = null;
-        this.localFiles = {};
-        this.localImages = {}; // Bộ nhớ chứa ảnh để load offline
         this.currentFileNode = null;
         this.STORAGE_KEY = 'QUIZ_PROGRESS_STATE';
 
@@ -40,14 +38,7 @@ class QuizApp {
             this.themeToggle.addEventListener('click', () => this.toggleTheme());
         }
         
-        const btnOpenFolder = document.getElementById('btn-open-folder');
-        const folderInput = document.getElementById('folder-input');
-        if (btnOpenFolder && folderInput) {
-            btnOpenFolder.addEventListener('click', () => folderInput.click());
-            folderInput.addEventListener('change', (e) => this.handleLocalFolder(e));
-        }
-
-        await this.loadQuestionIndexCSV();
+        await this.loadQuestionTree();
 
         this.quizForm.addEventListener('change', () => {
             this.updateProgress();
@@ -80,60 +71,18 @@ class QuizApp {
         this.themeToggle.setAttribute('title', isDark ? 'Tắt chế độ tối' : 'Bật chế độ tối');
     }
 
-    handleLocalFolder(event) {
-        const files = Array.from(event.target.files);
-        if (!files.length) return;
-
-        this.localFiles = {};
-        this.localImages = {};
-        const pathList = [];
-
-        files.forEach(f => {
-            let relativePath = f.webkitRelativePath.replace(/\\/g, '/');
-            const qIndex = relativePath.toLowerCase().indexOf('question/');
-            if (qIndex !== -1) {
-                relativePath = relativePath.substring(qIndex);
-            } else {
-                relativePath = 'question/' + relativePath.substring(relativePath.indexOf('/') + 1);
-            }
-            
-            if (f.name.toLowerCase().endsWith('.csv')) {
-                pathList.push(relativePath);
-                this.localFiles[relativePath] = f;
-            } else if (f.type.startsWith('image/') || f.name.match(/\.(png|jpe?g|gif|webp)$/i)) {
-                // Lưu lại các file ảnh người dùng đã quét
-                this.localImages[relativePath] = f;
-            }
-        });
-
-        if (pathList.length === 0) {
-            alert("Không tìm thấy file .csv nào trong thư mục vừa chọn!");
-            return;
+    async loadQuestionTree() {
+        try {
+            const response = await fetch('question-files.json');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const pathList = await response.json();
+            if (!Array.isArray(pathList) || pathList.length === 0) throw new Error('Empty question folder');
+            const treeRoot = this.treeManager.buildTreeFromPathList(pathList);
+            this.treeManager.render(treeRoot);
+        } catch (error) {
+            console.error('Không thể đọc thư mục question:', error);
+            this.treeManager.container.innerHTML = '<div class="tree-loading">Không thể tải danh sách bài thi.</div>';
         }
-
-        const treeRoot = this.treeManager.buildTreeFromPathList(pathList);
-        this.treeManager.render(treeRoot);
-        
-        this.emptyState.style.display = 'block';
-        this.quizForm.style.display = 'none';
-
-        this.restoreStateOnLoad();
-    }
-
-    async loadQuestionIndexCSV() {
-        let csvContent = '';
-        try { 
-            const res = await fetch('question/questions_index.csv'); 
-            if (res.ok) { csvContent = await res.text(); } 
-        } catch (e) {}
-        
-        if (!csvContent && window.QUESTIONS_INDEX_CSV) { csvContent = window.QUESTIONS_INDEX_CSV; }
-        if (!csvContent) return;
-        
-        const parsedRows = CSVParser.parse(csvContent);
-        const pathList = parsedRows.map(r => r.path || Object.values(r)[1] || '').filter(Boolean);
-        const treeRoot = this.treeManager.buildTreeFromPathList(pathList);
-        this.treeManager.render(treeRoot);
     }
 
     async loadFile(fileNode, isNewSelection = true) {
@@ -145,13 +94,9 @@ class QuizApp {
 
             let csvText = '';
 
-            if (this.localFiles && this.localFiles[fileNode.fullPath]) {
-                csvText = await this.localFiles[fileNode.fullPath].text();
-            } else {
-                try { const res = await fetch(fileNode.fullPath); if (res.ok) { csvText = await res.text(); } } catch (e) {}
-                if (!csvText && window.QUESTIONS_DATABASE && window.QUESTIONS_DATABASE[fileNode.fullPath]) {
-                    csvText = window.QUESTIONS_DATABASE[fileNode.fullPath];
-                }
+            try { const res = await fetch(fileNode.fullPath); if (res.ok) { csvText = await res.text(); } } catch (e) {}
+            if (!csvText && window.QUESTIONS_DATABASE && window.QUESTIONS_DATABASE[fileNode.fullPath]) {
+                csvText = window.QUESTIONS_DATABASE[fileNode.fullPath];
             }
 
             this.questions = CSVParser.parse(csvText);
@@ -178,17 +123,11 @@ class QuizApp {
         this.emptyState.style.display = 'none';
         this.quizForm.style.display = 'block';
 
-        // Khởi tạo Image Resolver (Nạp ảnh offline bằng Blob, hoặc online bằng đường dẫn)
         const csvFolderPath = this.currentFileNode.fullPath.substring(0, this.currentFileNode.fullPath.lastIndexOf('/'));
         const imageResolver = (imageName) => {
             if (!imageName) return '';
             const imageFullPath = csvFolderPath + '/' + imageName.trim();
             
-            // Nếu chạy Offline (Người dùng đã chọn Folder ở menu trái)
-            if (this.localImages && this.localImages[imageFullPath]) {
-                return URL.createObjectURL(this.localImages[imageFullPath]); // Dựng link ảo cho ảnh
-            }
-            // Nếu chạy Server / Online
             return imageFullPath;
         };
 
@@ -197,11 +136,34 @@ class QuizApp {
             return renderer.render(q, idx, imageResolver);
         }).join('');
 
+        this.observeQuestionCards();
+
         this.actionsPanel.style.display = 'flex';
         this.scoreBoard.textContent = `Tiến độ: 0/${this.questions.length} câu`;
         this.updateProgress();
         this.submitBtn.disabled = false;
         this.submitBtn.textContent = 'Nộp Bài';
+    }
+
+    observeQuestionCards() {
+        const cards = this.container.querySelectorAll('.question-card');
+        if (!('IntersectionObserver' in window)) {
+            cards.forEach(card => card.classList.add('is-visible'));
+            return;
+        }
+
+        const observer = new IntersectionObserver((entries, currentObserver) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
+                entry.target.classList.add('is-visible');
+                currentObserver.unobserve(entry.target);
+            });
+        }, { root: this.container.closest('.content-body'), threshold: 0.08 });
+
+        cards.forEach(card => {
+            card.classList.add('reveal-ready');
+            observer.observe(card);
+        });
     }
 
     updateProgress(formData = new FormData(this.quizForm)) {
